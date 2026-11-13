@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       deploy:
-        description: Publish a fresh analysis to GitHub Pages
+        description: Rebuild the pinned dataset and publish to GitHub Pages
         type: boolean
         default: true
 
@@ -70,7 +70,16 @@ jobs:
           cache: npm
       - run: pip install -e .
       - run: npm ci
-      - run: fire-coverage run --refresh
+      - name: Restore verified source snapshot
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl --fail --location --retry 3 --connect-timeout 20 --max-time 180 \
+            --output coverage-sources-0001.tar.gz \
+            https://github.com/jmacd/mendo-coast-fire/releases/download/source-data-0001/coverage-sources-0001.tar.gz
+          echo "5dec50697f11d085772a0fbfc00c8d9e5841527733d0f0bf17b83e9b77f00de3  coverage-sources-0001.tar.gz" | sha256sum --check --strict
+          mkdir -p "$GITHUB_WORKSPACE/data"
+          tar -xzf coverage-sources-0001.tar.gz --no-same-owner -C "$GITHUB_WORKSPACE/data"
+      - run: fire-coverage analyze
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - name: Verify the production dataset and map

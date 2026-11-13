@@ -234,17 +234,35 @@ require an external request when browsing.
 
 The [public site](https://jmacd.github.io/mendo-coast-fire/) is deployed by
 `.github/workflows/pages.yml`. Every push to `main` runs linting, Python,
-routing and browser checks, then downloads fresh source data, builds the
-site, verifies a real coverage scenario against the production bundle, and
-deploys to GitHub Pages. Pull requests run checks without publishing.
+routing and browser checks, then restores the pinned source snapshot, rebuilds
+the analysis and site, verifies a real coverage scenario against the production
+bundle, and deploys to GitHub Pages. Pull requests run checks without publishing.
 
-Pages must use **GitHub Actions** as its publishing source. To refresh the
-data without a code change, run **Check and publish coverage** manually on
-`main` with **deploy** enabled (the default). Source failures stop deployment
-and leave the previously published site intact; failure screenshots are kept
-as Actions artifacts for seven days. The site's relative asset/data URLs
-support the `/mendo-coast-fire/` project path and local previews. Local builds
-do not publish or change repository settings.
+Pages must use **GitHub Actions** as its publishing source. To republish without
+a code change, run **Check and publish coverage** manually on `main` with
+**deploy** enabled (the default). This rebuilds from the same source data;
+it does not refresh public-source downloads.
+
+The [source-data-0001 release](https://github.com/jmacd/mendo-coast-fire/releases/tag/source-data-0001)
+contains the verified original downloads from **November 13, 2026**, plus their
+query fingerprints, retrieval timestamps and per-file hashes. Actions verifies
+the archive against a SHA-256 digest pinned in the workflow, then the analysis
+verifies each source against its metadata and the current source configuration.
+Live Overpass availability is not a deployment dependency. Original download
+dates remain in the site's `provenance.json`; rebuilding is not new source data.
+
+To update the dataset, explicitly run `fire-coverage run --refresh`, build and
+check the results, then archive the four `data/*.json` sources and their four
+`*.source.json` metadata files. Publish a new numbered release (for example
+`source-data-0002`) and update the workflow's archive URL and SHA-256 together.
+Do not replace an existing release snapshot. Changed source queries or study
+bounding boxes require matching source data, not a bypass of the integrity checks.
+
+Download, checksum, analysis or test failures stop deployment and leave the
+previously published site intact. Failure screenshots are kept as Actions
+artifacts for seven days. Relative asset/data URLs support the
+`/mendo-coast-fire/` project path and local previews. Local builds do not publish
+or change repository settings.
 
 OSM-derived road data is subject to the
 [Open Database License](https://www.openstreetmap.org/copyright). Preserve
