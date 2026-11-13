@@ -7,6 +7,7 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:4179",
     headless: true,
+    screenshot: "only-on-failure",
     launchOptions: { args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] },
   },
   webServer: {

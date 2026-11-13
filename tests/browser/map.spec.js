@@ -78,7 +78,10 @@ async function fixture(page, missing = false, special = false) {
 }
 
 async function mapColors(page) {
-  const image = await page.locator(".maplibregl-canvas").screenshot();
+  // Measure map layers, not platform-dependent control icons or DOM marker edges.
+  const image = await page.locator(".maplibregl-canvas").screenshot({
+    style: ".maplibregl-control-container, .map-caption, .maplibregl-marker, .maplibregl-popup { visibility: hidden !important; }",
+  });
   return page.evaluate(async (base64) => {
     const response = await fetch(`data:image/png;base64,${base64}`);
     const bitmap = await createImageBitmap(await response.blob());
@@ -181,6 +184,7 @@ for (const width of [1280, 390]) {
     await page.goto("/");
     await expect(page.locator("#status")).toContainText("Ready.");
     await expect(page.locator("#place-mode")).toHaveAttribute("aria-pressed", "true");
+    const baselineBlue = (await mapColors(page)).blue;
     const canvas = page.locator(".maplibregl-canvas");
     const bounds = await canvas.boundingBox();
     const clickStation = () => canvas.click({ position: { x: bounds.width / 2, y: bounds.height / 2 } });
@@ -197,13 +201,13 @@ for (const width of [1280, 390]) {
     await page.getByRole("button", { name: "Clear station", exact: true }).click();
     await expect(page.locator("#selected-station")).toBeHidden();
     await expect.poll(async () => (await mapColors(page)).yellow).toBe(0);
-    await expect.poll(async () => (await mapColors(page)).blue).toBe(0);
+    await expect.poll(async () => (await mapColors(page)).blue).toBeLessThanOrEqual(baselineBlue + 10);
     await clickStation();
     await expect(page.locator("#status")).toContainText("Station evaluated.");
     await page.getByRole("button", { name: "Use map center" }).click();
     await expect(page.locator("#new-count")).toHaveText("1");
     await expect(page.locator("#selected-station")).toBeHidden();
-    await expect.poll(async () => (await mapColors(page)).blue).toBe(0);
+    await expect.poll(async () => (await mapColors(page)).blue).toBeLessThanOrEqual(baselineBlue + 10);
     await expect.poll(async () => (await mapColors(page)).purple).toBeGreaterThan(width < 640 ? 100 : 300);
     await expect(page.locator("#map-warning")).toBeHidden();
   });
@@ -270,18 +274,23 @@ test("other zoning and uncertain parcels never become colored gaps or candidate 
   data["graph.json"].parcels[1].baseline = "covered";
   data["summary.json"].counts = { covered: 2, uncovered: 2, unknown: 1 };
   data["summary.json"].focus.counts = { covered: 2, uncovered: 0 };
+  const allParcels = data["parcels.geojson"].features;
+  data["parcels.geojson"].features = allParcels.filter((p) => p.properties.focus_status === "included");
   await page.goto("/");
+  await expect(page.locator("#status")).toContainText("Ready.");
+  const baselineRed = (await mapColors(page)).red;
+  data["parcels.geojson"].features = allParcels;
+  await page.reload();
   await expect(page.locator("#status")).toContainText("Ready.");
   await expect(page.locator("#uncovered-count")).toHaveText("0");
   await expect(page.locator("#unknown-count")).toHaveText("2");
-  await expect.poll(async () => (await mapColors(page)).red).toBeLessThan(40);
+  await expect.poll(async () => (await mapColors(page)).red).toBeLessThanOrEqual(baselineRed + 10);
   await page.getByRole("checkbox", { name: "Highlight coverage gaps" }).uncheck();
-  await expect.poll(async () => (await mapColors(page)).red).toBeLessThan(40);
+  await expect.poll(async () => (await mapColors(page)).red).toBeLessThanOrEqual(baselineRed + 10);
   await page.getByRole("button", { name: "Use map center" }).click();
   await expect(page.locator("#new-count")).toHaveText("0");
   await expect(page.locator("#candidate-detail")).toContainText("2 developed residential parcels");
-  // The candidate marker's antialiased edge contributes a few purple pixels.
-  await expect.poll(async () => (await mapColors(page)).purple).toBeLessThan(40);
+  await expect.poll(async () => (await mapColors(page)).purple).toBe(0);
 });
 
 test("inferred parcel gaps remain visible, include connector cost, and disclose the estimate", async ({ page }) => {

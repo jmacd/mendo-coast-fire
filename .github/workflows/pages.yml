@@ -9,7 +9,7 @@ on:
       deploy:
         description: Publish a fresh analysis to GitHub Pages
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: read
@@ -17,6 +17,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -33,9 +34,17 @@ jobs:
       - run: npm test
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
+      - name: Save browser failure details
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-check-failure
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
   publish:
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy))
     needs: check
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -51,6 +60,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -62,7 +72,19 @@ jobs:
       - run: npm ci
       - run: fire-coverage run --refresh
       - run: npm run build
-      - uses: actions/configure-pages@v5
+      - run: npx playwright install --with-deps chromium
+      - name: Verify the production dataset and map
+        run: npm run test:browser -- tests/browser/real-data.spec.js
+        env:
+          FIRE_SITE_PREVIEW: "1"
+      - name: Save production browser failure details
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-production-failure
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

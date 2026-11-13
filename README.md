@@ -232,10 +232,19 @@ are in `stations.csv`, including excluded/unconnected stations and reasons.
 MapLibre and projection code are bundled locally. Only the OSM basemap tiles
 require an external request when browsing.
 
-The GitHub Actions workflow checks the project and builds the site; manual
-deployment can publish to GitHub Pages after creating a repository and
-enabling Pages with GitHub Actions. No repository or deployment is created
-by the local build.
+The [public site](https://jmacd.github.io/mendo-coast-fire/) is deployed by
+`.github/workflows/pages.yml`. Every push to `main` runs linting, Python,
+routing and browser checks, then downloads fresh source data, builds the
+site, verifies a real coverage scenario against the production bundle, and
+deploys to GitHub Pages. Pull requests run checks without publishing.
+
+Pages must use **GitHub Actions** as its publishing source. To refresh the
+data without a code change, run **Check and publish coverage** manually on
+`main` with **deploy** enabled (the default). Source failures stop deployment
+and leave the previously published site intact; failure screenshots are kept
+as Actions artifacts for seven days. The site's relative asset/data URLs
+support the `/mendo-coast-fire/` project path and local previews. Local builds
+do not publish or change repository settings.
 
 OSM-derived road data is subject to the
 [Open Database License](https://www.openstreetmap.org/copyright). Preserve
