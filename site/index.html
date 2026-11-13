@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Explore five-road-mile fire station coverage and potential new station locations on the Mendocino Coast.">
+  <title>Mendocino Coast Fire Coverage</title>
+</head>
+<body>
+  <header class="site-header">
+    <a class="wordmark" href="./"><span class="brand-mark" aria-hidden="true">+</span> Mendocino Coast Fire</a>
+    <nav aria-label="Primary navigation">
+      <a href="#method">How it works</a>
+      <a href="#data">Sources &amp; downloads</a>
+      <a class="button small" href="#explorer">Explore coverage</a>
+    </nav>
+  </header>
+  <main>
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Gualala to Westport / A public-data study</p>
+        <h1>Five miles by road.<br>Not as the crow flies.</h1>
+      </div>
+      <div class="hero-note">
+        <p>Where does the coast's fire-station network reach? Explore estimated parcel coverage, then place a hypothetical station to see what it adds.</p>
+        <p class="caution"><strong>A planning screen, not a safety guarantee.</strong> Road access and station operations need verification. This is not an insurance or response-time assessment.</p>
+      </div>
+    </section>
+    <section class="metrics" aria-label="Baseline study totals">
+      <div><strong id="station-count">--</strong><span>qualifying station locations</span></div>
+      <div><strong id="covered-count">--</strong><span>developed residential parcels with estimated coverage</span></div>
+      <div><strong id="uncovered-count">--</strong><span>developed residential parcels beyond 5 miles, including access</span></div>
+      <div><strong id="unknown-count">--</strong><span>parcels needing zoning/value review</span></div>
+    </section>
+    <section id="explorer" class="explorer" aria-label="Interactive coverage explorer">
+      <aside class="sidebar">
+        <p class="eyebrow">Explore the network</p>
+        <h2>What could one new station change?</h2>
+        <p class="muted">Click near a road to place a candidate. Purple parcels are newly covered; green parcels were already covered. Bright yellow roads show the candidate's reach.</p>
+        <p class="muted">Click an existing station in either mode to show its own five-mile reach.</p>
+        <div class="gap-controls">
+          <label><input id="highlight-gaps" type="checkbox" checked disabled> Highlight coverage gaps</label>
+          <p id="focus-rule">Loading development and access screening rules...</p>
+          <p id="gap-summary" class="fine">Loading baseline gap counts...</p>
+        </div>
+        <div class="mode-switch" aria-label="Map click behavior">
+          <button id="place-mode" aria-pressed="true" disabled>Place a station</button>
+          <button id="inspect-mode" aria-pressed="false" disabled>Inspect parcels</button>
+        </div>
+        <div id="status" class="status" role="status" aria-live="polite">Loading source data and routing network...</div>
+        <div id="error" class="error" role="alert" hidden></div>
+        <div id="candidate" class="candidate">
+          <p class="eyebrow">Hypothetical station</p>
+          <strong id="new-count">--</strong>
+          <span>newly covered residential parcels</span>
+          <p id="candidate-detail">Place a station to calculate its contribution. Each click replaces the previous candidate.</p>
+        </div>
+        <div class="map-actions">
+          <button id="use-center" disabled>Use map center</button>
+          <button id="clear" disabled>Clear candidate</button>
+          <button id="fit" disabled>Show study area</button>
+        </div>
+        <details class="coordinates">
+          <summary>Enter a precise location</summary>
+          <form id="coordinate-form">
+            <label>Latitude <input id="latitude" type="number" step="any" min="-90" max="90" placeholder="39.36" required></label>
+            <label>Longitude <input id="longitude" type="number" step="any" min="-180" max="180" placeholder="-123.81" required></label>
+            <button id="use-coordinates" type="submit" disabled>Evaluate location</button>
+          </form>
+        </details>
+        <div class="legend" aria-label="Map legend">
+          <h3>Reading the map</h3>
+          <p><i class="swatch covered"></i>Existing estimated coverage</p>
+          <p><i class="swatch new"></i>Newly covered by your candidate</p>
+          <p><i class="swatch candidate-route"></i><span id="road-reach-label">Candidate's five-mile road reach</span></p>
+          <p id="station-reach-legend" hidden><i class="swatch station-reach"></i>Reached by the selected existing station</p>
+          <p><i class="swatch uncovered"></i>Existing five-mile coverage gap</p>
+          <p><i class="swatch inferred"></i>Dashed outline: inferred straight-line access</p>
+          <p><i class="swatch unknown"></i>Zoning/value uncertain: outlines only</p>
+          <p><i class="swatch station"></i>Qualifying station (unverified)</p>
+          <p><i class="swatch station special-station"></i>Special case: locally added station</p>
+          <p><i class="swatch excluded"></i>Station excluded or unconnected</p>
+          <p><i class="swatch highway"></i>Study Highway 1 segment</p>
+        </div>
+        <p class="fine">Inferred access counts toward the five-mile limit but can underestimate winding driveways or cross barriers. Inspect a dashed parcel to see its connector. Faint outlines mean missing zoning/value, not absence of homes. Other zoning and values below the cutoff are hidden.</p>
+      </aside>
+      <div class="map-wrap">
+        <div id="map" aria-label="Coverage map"></div>
+        <div id="map-warning" class="map-warning" role="alert" hidden></div>
+        <div id="map-caption" class="map-caption">Developed residential parcels &middot; Five-mile route + estimated access</div>
+      </div>
+    </section>
+    <section id="method" class="section">
+      <p class="eyebrow">Follow the roads, not a radius</p>
+      <h2>A connected network.<br>A clearer view of the gaps.</h2>
+      <div class="method-grid">
+        <article><span class="step">01</span><h3>Start with stations</h3><p>Combine USGS and OSM station locations with orange, locally added special cases, consolidating points within 50 m. Screen by the shortest directed road route to Highway 1 between Gualala and Westport. Include sites at five miles or less.</p></article>
+        <article><span class="step">02</span><h3>Trace five road miles</h3><p>Follow connected OSM roads outward from each station. Respect mapped one-way directions. A road crossing on the map is not automatically a junction.</p></article>
+        <article><span class="step">03</span><h3>Focus on developed residential parcels</h3><p>Screen by residential zoning and county improvement value. Retain mapped contacts within 30 m. Where access is missing, add the straight-line distance from the parcel boundary to the nearest highway-connected road. Dashed outlines identify this optimistic estimate.</p></article>
+        <article><span class="step">04</span><h3>Try a new location</h3><p>Recalculate in your browser. Existing coverage stays green; only additional parcels turn purple with bold outlines. Bright yellow roads show the candidate's reach. Move the candidate to compare one location at a time.</p></article>
+      </div>
+      <div class="limitations">
+        <h3>What this map cannot tell you</h3>
+        <p>A road beside a parcel is not necessarily a legal entrance. Reaching its boundary does not mean reaching its buildings. The model excludes explicitly private or restricted roads, tracks, conditional access and unverified barriers, but does not model turn restrictions, apparatus limits, bridge capacity, temporary closures or emergency exemptions.</p>
+        <p>Missing access for qualifying developed residential parcels is estimated with an uncapped straight-line connector, not a mapped driveway. Its length is included in baseline, candidate and selected-station distances. It can cross barriers and underestimate the actual trip to a home. County improvement value is a screening proxy, not market value or proof of a dwelling; low or missing assessments can omit homes.</p>
+        <p>The map focuses on dedicated residential zones, not a verified inventory of homes. Agricultural, timber and mixed-use zones can contain residences but are outside this focus. Missing or conflicting zoning is kept uncertain. The county zoning map does not cover incorporated-city zoning, including Fort Bragg and Point Arena. Where city zoning is missing, parcels remain faint outlines rather than being classified as non-residential.</p>
+        <p>Station records can be outdated, missing or duplicated. Staffing, equipment, seasonal operations, mutual aid and response times are not evaluated. Treat apparent gaps as questions to investigate with local departments, not as findings that a property lacks fire protection.</p>
+        <p>Orange stations are locally added special cases included in estimated coverage. A station's absence from these public inventories does not establish whether insurers recognize it or how it affects homeowners' premiums.</p>
+      </div>
+    </section>
+    <section id="data" class="section data-section">
+      <p class="eyebrow">Open sources / Reproducible results</p>
+      <h2>Inspect the evidence.</h2>
+      <p id="data-date" class="muted">Source retrieval dates and checksums are recorded with every build.</p>
+      <div class="downloads">
+        <a href="./stations.csv" download>Station inventory CSV <span>Locations, selection and source details</span></a>
+        <a href="./parcels.geojson" download>Parcel results GeoJSON <span>All parcels, zoning, improvement value, inferred access and coverage</span></a>
+        <a href="./graph.json" download>Derived road network <span>ODbL road graph and access estimates</span></a>
+        <a href="./provenance.json" download>Source provenance <span>Original URLs, retrieval dates and hashes</span></a>
+      </div>
+      <details>
+        <summary>Review the station inventory</summary>
+        <p class="fine">All inventory points within five straight-line miles are checked by road. Locations that fail the road-distance test remain listed for review. A missing route is not proof of no access.</p>
+        <div class="table-wrap">
+          <table><thead><tr><th>Station</th><th>Selection</th><th>Road miles to Hwy 1</th><th>Road snap gap</th></tr></thead><tbody id="station-list"></tbody></table>
+        </div>
+      </details>
+      <p class="fine">Roads: <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors / ODbL</a>.
+        Stations: <a href="https://www.arcgis.com/home/item.html?id=2c36dbb008844081b017da6fd3d0d28b">USGS structures, hosted by Esri</a>.
+        Parcels: <a href="https://services2.arcgis.com/iq8zYa0SRsvIFFKz/arcgis/rest/services/Mendocino_County_Parcels/FeatureServer/0">Mendocino County</a>.
+        Parcel counts combine source records by APN within a ten-mile search envelope of the study highway.</p>
+    </section>
+  </main>
+  <footer>Mendocino Coast Fire Coverage <span>A public-data planning study. Not for emergency use.</span></footer>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

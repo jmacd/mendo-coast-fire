@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mendocino-coast-fire"
+version = "0.1.0"
+description = "Reproducible five-road-mile fire station coverage screening"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "pyproj>=3.7,<4",
+  "requests>=2.32,<3",
+  "shapely>=2.1,<3",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10", "ruff>=0.11,<1"]
+
+[project.scripts]
+fire-coverage = "coast_fire.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/coast_fire"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

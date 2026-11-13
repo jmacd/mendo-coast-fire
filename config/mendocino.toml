@@ -1,0 +1,43 @@
+[study]
+name = "Mendocino Coast: Gualala to Westport"
+# Includes a routing halo beyond the ten-mile parcel search envelope.
+bbox = [-124.10, 38.60, -123.30, 39.82]
+highway_south = 38.765
+highway_north = 39.650
+distance_miles = 5.0
+parcel_road_tolerance_m = 30.0
+station_snap_m = 150.0
+candidate_snap_m = 100.0
+station_colocation_m = 50.0
+# Dedicated residential districts; excludes rangeland, timber, and mixed-use zones.
+residential_zones = ["R1", "R2", "R3", "RR", "RMR", "SR", "UR", "MRR", "MSR", "MTR", "MRM"]
+min_improvement_value = 10000.0
+
+[sources.roads]
+url = "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+
+[sources.parcels]
+url = "https://services2.arcgis.com/iq8zYa0SRsvIFFKz/arcgis/rest/services/Mendocino_County_Parcels/FeatureServer/0"
+fields = ["FID", "APNFULL", "BASEZONE", "IMPV"]
+id_field = "FID"
+
+[sources.stations]
+url = "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/Structures_Medical_Emergency_Response_v1/FeatureServer/2"
+fields = ["OBJECTID", "PERMANENT_IDENTIFIER", "NAME", "ADDRESS", "CITY", "STATE", "SOURCE_ORIGINATOR", "SOURCE_DATADESC", "LOADDATE"]
+id_field = "OBJECTID"
+where = "STATE = 'CA' AND FCODE = 74026"
+
+[sources.osm_stations]
+url = "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+
+[[additional_stations]]
+id = "caspar-little-lake"
+name = "Caspar fire station"
+address = "42800 Caspar Little Lake Rd"
+city = "Caspar"
+# Representative point of county parcel 1185005100, not a surveyed entrance.
+coordinates = [-123.77565492701325, 39.34292658693845]
+reported_on = "2026-11-12"
+source_description = "Locally reported station. Approximate location from Mendocino County parcel 1185005100 (FID 59005), situs address 42800 CASPAR LITTLE LAKE RD. Building entrance and operational status have not been independently verified."
+source_url = "https://services2.arcgis.com/iq8zYa0SRsvIFFKz/arcgis/rest/services/Mendocino_County_Parcels/FeatureServer/0"
+note = "Special case: added locally after omission from the initial USGS/OSM inventories. Insurer recognition and premium effects have not been verified."

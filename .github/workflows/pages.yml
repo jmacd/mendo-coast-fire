@@ -1,0 +1,70 @@
+name: Check and publish coverage
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Publish a fresh analysis to GitHub Pages
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: pip install -e '.[test]'
+      - run: npm ci
+      - run: ruff check . && ruff format --check . && pytest -q
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: fire-coverage-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: pip install -e .
+      - run: npm ci
+      - run: fire-coverage run --refresh
+      - run: npm run build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
