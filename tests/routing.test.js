@@ -4,16 +4,16 @@ import { MILE, RoadNetwork, parcelDistance, shortestPaths, sourceSeeds } from ".
 
 function graph() {
   return {
-    schema: 3, crs: "EPSG:3310",
+    schema: 4, crs: "EPSG:3310",
     nodes: [[0, 0, -123.8, 39.3], [20000, 0, -123.6, 39.3]],
     edges: [[0, 1, 20000, 3]],
     highway_edges: [0], to_highway: [0, 0],
     candidate_snap_m: 100, station_snap_m: 150, limit_m: 5 * MILE,
     parcels: [
-      { id: 0, access: [[0, .5, .5]], baseline: "covered" },
-      { id: 1, access: [[0, .8, .8]], baseline: "uncovered" },
-      { id: 2, access: [[0, 1, 1]], baseline: "uncovered" },
-      { id: 3, access: [], baseline: "unknown" },
+      { id: 0, access: [[0, .5, .5]], baseline: "covered", baseline_without_special: "uncovered" },
+      { id: 1, access: [[0, .8, .8]], baseline: "uncovered", baseline_without_special: "uncovered" },
+      { id: 2, access: [[0, 1, 1]], baseline: "uncovered", baseline_without_special: "uncovered" },
+      { id: 3, access: [], baseline: "unknown", baseline_without_special: "unknown" },
     ],
   };
 }
@@ -42,8 +42,8 @@ test("one-way direction and off-road connector count toward coverage", () => {
   const g = graph();
   g.edges[0][3] = 1;
   g.parcels = [
-    { id: 0, baseline: "uncovered", access: [[0, .4, .4]] },
-    { id: 1, baseline: "uncovered", access: [[0, .9, .9]] },
+    { id: 0, baseline: "uncovered", baseline_without_special: "uncovered", access: [[0, .4, .4]] },
+    { id: 1, baseline: "uncovered", baseline_without_special: "uncovered", access: [[0, .9, .9]] },
   ];
   assert.deepEqual(new RoadNetwork(g).scenario([10000, 0]).newIds, [1]);
   assert.deepEqual(new RoadNetwork(g).scenario([10000, 60]).newIds, []);
@@ -57,19 +57,36 @@ test("reject far-away and disconnected candidates instead of fabricating a road"
   assert.throws(() => new RoadNetwork(g).scenario([10000, 0]), /cannot reach/);
 });
 
-test("reject older datasets without development screening and parcel connector costs", () => {
-  for (const schema of [1, 2]) {
+test("reject older or incomplete datasets without both comparison baselines", () => {
+  for (const schema of [1, 2, 3]) {
     const g = { ...graph(), schema };
     assert.throws(() => new RoadNetwork(g), /Rebuild the coverage data/);
   }
+  const g = graph();
+  delete g.parcels[0].baseline_without_special;
+  assert.throws(() => new RoadNetwork(g), /Rebuild the coverage data/);
+});
+
+test("candidate additions use the selected baseline without changing road reach", () => {
+  const g = graph();
+  g.parcels.push({ id: 4, baseline: "covered", baseline_without_special: "covered", access: [[0, .6, .6]] });
+  const network = new RoadNetwork(g);
+  const on = network.scenario([10000, 0]);
+  const off = network.scenario([10000, 0], { includeSpecial: false });
+  assert.deepEqual(on.newIds, [1]);
+  assert.deepEqual(off.newIds, [0, 1]);
+  assert.deepEqual(off.reachedIds, on.reachedIds);
+  assert.deepEqual(off.roads, on.roads);
+  assert.deepEqual(network.scenario([10000, 0]).newIds, [1], "re-enabling restores the original baseline");
+  assert.deepEqual(network.scenario([10000, 0], { existingStation: true, includeSpecial: false }).newIds, []);
 });
 
 test("inferred parcel access counts against candidate and existing-station reach", () => {
   const g = graph();
   g.parcels = [
-    { id: 10, baseline: "uncovered", access: [[0, .8, .8, 2000]] },
-    { id: 11, baseline: "uncovered", access: [[0, .8, .8, 2100]] },
-    { id: 12, baseline: "uncovered", access: [[0, .5, .5, g.limit_m]] },
+    { id: 10, baseline: "uncovered", baseline_without_special: "uncovered", access: [[0, .8, .8, 2000]] },
+    { id: 11, baseline: "uncovered", baseline_without_special: "uncovered", access: [[0, .8, .8, 2100]] },
+    { id: 12, baseline: "uncovered", baseline_without_special: "uncovered", access: [[0, .5, .5, g.limit_m]] },
   ];
   const network = new RoadNetwork(g);
   assert.deepEqual(network.scenario([10000, 0]).newIds, [10, 12]);
@@ -82,8 +99,8 @@ test("existing-station reach uses its own snap limit, connector budget and one-w
   const g = graph();
   g.edges[0][3] = 1;
   g.parcels.push(
-    { id: 4, baseline: "uncovered", access: [[0, .9, .9]] },
-    { id: 5, baseline: "covered", access: [[0, .4, .4]] },
+    { id: 4, baseline: "uncovered", baseline_without_special: "uncovered", access: [[0, .9, .9]] },
+    { id: 5, baseline: "covered", baseline_without_special: "covered", access: [[0, .4, .4]] },
   );
   const network = new RoadNetwork(g);
   assert.throws(() => network.scenario([10000, 125]), /within 100 m/);

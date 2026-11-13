@@ -43,6 +43,16 @@ h3 { font-size: 1rem; line-height: 1.3; }
 .sidebar h2 { font-size: 1.9rem; }
 .sidebar p { font-size: .8rem; }
 .muted { color: var(--muted); }
+.station-controls { padding: .8rem; margin-bottom: .8rem; border: 1px solid #dfb58e; border-radius: 6px; background: #fff0df; }
+.station-controls p { margin: .5rem 0 0; font-size: .73rem; }
+.station-toggle { position: relative; display: flex; align-items: center; gap: .6rem; font-size: .85rem; font-weight: 750; color: #77400f; cursor: pointer; }
+.station-toggle input { position: absolute; left: 0; width: 38px; height: 24px; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
+.switch-track { flex: 0 0 38px; height: 22px; border: 1px solid #77400f; border-radius: 12px; background: #f7f5ef; }
+.switch-track::after { content: ""; display: block; width: 16px; height: 16px; margin: 2px; border-radius: 50%; background: #77400f; }
+.station-toggle input:checked + .switch-track { background: #e97816; }
+.station-toggle input:checked + .switch-track::after { transform: translateX(16px); background: white; }
+.station-toggle input:focus-visible + .switch-track { outline: 3px solid #337c9c; outline-offset: 3px; }
+.station-toggle input:disabled + .switch-track { opacity: .5; cursor: not-allowed; }
 .gap-controls { padding: .8rem; border: 1px solid #d6aaa2; border-radius: 6px; background: #fff1ed; }
 .gap-controls label { display: flex; align-items: center; gap: .5rem; font-size: .85rem; font-weight: 750; color: #982d27; cursor: pointer; }
 .gap-controls input { accent-color: #982d27; }
@@ -75,6 +85,8 @@ h3 { font-size: 1rem; line-height: 1.3; }
 .inferred { background: transparent; border: 2px dashed #526453; }
 .station { background: #913e2c; border: 2px solid white; outline: 1px solid #913e2c; border-radius: 50%; }
 .special-station { background: #e97816; outline-color: #e97816; }
+.special-impact { background: transparent; border: 3px solid #e97816; }
+.special-disabled .special-station { background: #fffdf8; border-color: #e97816; }
 .excluded { background: #f7f5ef; border: 2px solid #6c7370; border-radius: 50%; }
 .highway { background: #324d66; height: 3px; border: 0; }
 .fine { font-size: .75rem !important; color: var(--muted); }

@@ -83,7 +83,9 @@ export function parcelDistance(edges, distances, accesses, starts) {
 
 export class RoadNetwork {
   constructor(graph) {
-    if (graph.schema !== 3 || graph.crs !== "EPSG:3310" || !graph.edges.length) {
+    if (graph.schema !== 4 || graph.crs !== "EPSG:3310" || !graph.edges.length
+      || !Array.isArray(graph.parcels)
+      || graph.parcels.some((p) => !["covered", "uncovered", "unknown"].includes(p.baseline_without_special))) {
       throw new Error("Unsupported or empty routing dataset. Rebuild the coverage data.");
     }
     this.graph = graph;
@@ -117,7 +119,7 @@ export class RoadNetwork {
     return best;
   }
 
-  scenario(xy, { existingStation = false } = {}) {
+  scenario(xy, { existingStation = false, includeSpecial = true } = {}) {
     const { nodes, edges, parcels, limit_m: limit, to_highway: toHighway } = this.graph;
     if (existingStation && !Number.isFinite(this.graph.station_snap_m)) {
       throw new Error("Station routing settings are missing. Rebuild the coverage data.");
@@ -137,7 +139,8 @@ export class RoadNetwork {
     for (const parcel of parcels) {
       if (parcelDistance(edges, distances, parcel.access, starts) <= limit) {
         reachedIds.push(parcel.id);
-        if (!existingStation && parcel.baseline === "uncovered") newIds.push(parcel.id);
+        const baseline = includeSpecial ? parcel.baseline : parcel.baseline_without_special;
+        if (!existingStation && baseline === "uncovered") newIds.push(parcel.id);
       }
     }
     const coordinates = [];

@@ -161,7 +161,7 @@ def analyze(config, directory: Path, output: Path):
     if not bounds.contains(envelope):
         raise ValueError("Download bbox must contain the entire ten-mile Highway 1 envelope")
 
-    stations, starts = [], []
+    stations, starts, regular_starts = [], [], []
     additions = config.get("additional_stations", [])
     if additions:
         provenance["local_stations"] = {
@@ -185,6 +185,8 @@ def analyze(config, directory: Path, output: Path):
         )
         if status == "included":
             starts.append(start)
+            if not properties["special_case"]:
+                regular_starts.append(start)
         stations.append(
             feature(
                 mapping(location),
@@ -209,6 +211,12 @@ def analyze(config, directory: Path, output: Path):
     starts_by_edge = defaultdict(list)
     for edge, fraction, offset in starts:
         starts_by_edge[edge].append((fraction, offset))
+    distances_without_special = dijkstra(
+        network.adj, source_seeds(network.edges, regular_starts), math.inf
+    )
+    regular_starts_by_edge = defaultdict(list)
+    for edge, fraction, offset in regular_starts:
+        regular_starts_by_edge[edge].append((fraction, offset))
     connected = connected_nodes(network)
     connected_edges = [i for i, edge in enumerate(network.edges) if edge[0] in connected]
     connected_tree = STRtree([network.lines[i] for i in connected_edges])
@@ -217,6 +225,9 @@ def analyze(config, directory: Path, output: Path):
     focus_counts = Counter()
     focus_totals = Counter()
     inferred_counts = Counter()
+    counts_without_special = Counter()
+    focus_without_special = Counter()
+    inferred_without_special = Counter()
     grouped = group_parcels(sources["parcels"]["features"], envelope)
     for index, (apn, polygon, zones, improvement_value) in enumerate(grouped):
         accesses = network.parcel_access(polygon, study["parcel_road_tolerance_m"])
@@ -244,21 +255,45 @@ def analyze(config, directory: Path, output: Path):
             if not connected_accesses
             else ("covered" if distance <= limit else "uncovered")
         )
+        distance_without_special = parcel_distance(
+            network.edges, distances_without_special, connected_accesses, regular_starts_by_edge
+        )
+        state_without_special = (
+            "unknown"
+            if not connected_accesses
+            else ("covered" if distance_without_special <= limit else "uncovered")
+        )
         counts[state] += 1
+        counts_without_special[state_without_special] += 1
         focus_totals[focus] += 1
         if focus == "included":
             focus_counts[state] += 1
-            access_records.append({"id": index, "access": connected_accesses, "baseline": state})
+            focus_without_special[state_without_special] += 1
+            access_records.append(
+                {
+                    "id": index,
+                    "access": connected_accesses,
+                    "baseline": state,
+                    "baseline_without_special": state_without_special,
+                }
+            )
         if connector:
             inferred_counts[state] += 1
+            inferred_without_special[state_without_special] += 1
         properties = {
             "apn": apn,
             "coverage": state,
+            "coverage_without_special": state_without_special,
             "base_zones": "; ".join(zone or "Unknown" for zone in zones),
             "zoning_status": zoning,
             "focus_status": focus,
             "improvement_value": improvement_value,
             "baseline_miles": round(distance / MILE, 3) if math.isfinite(distance) else None,
+            "baseline_without_special_miles": (
+                round(distance_without_special / MILE, 3)
+                if math.isfinite(distance_without_special)
+                else None
+            ),
             "access": "inferred_straight_line" if connector else mapped_access,
             "mapped_access": mapped_access,
             **({"access_gap_m": round(gap, 1), "access_connector": connector} if connector else {}),
@@ -305,6 +340,16 @@ def analyze(config, directory: Path, output: Path):
             "residential_zones": study["residential_zones"],
             "min_improvement_value": minimum_value,
             "inferred_counts": {key: inferred_counts[key] for key in ("covered", "uncovered")},
+        },
+        "without_special": {
+            "stations": len(regular_starts),
+            "counts": {
+                key: counts_without_special[key] for key in ("covered", "uncovered", "unknown")
+            },
+            "focus_counts": {key: focus_without_special[key] for key in ("covered", "uncovered")},
+            "inferred_counts": {
+                key: inferred_without_special[key] for key in ("covered", "uncovered")
+            },
         },
         "road_nodes": len(network.nodes),
         "road_segments": len(network.edges),
@@ -355,7 +400,7 @@ def analyze(config, directory: Path, output: Path):
     write_json(
         output / "graph.json",
         {
-            "schema": 3,
+            "schema": 4,
             "crs": "EPSG:3310",
             "nodes": network.nodes,
             "edges": network.edges,

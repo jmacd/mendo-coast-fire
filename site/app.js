@@ -10,6 +10,7 @@ const empty = () => ({ type: "FeatureCollection", features: [] });
 const number = (value) => value.toLocaleString();
 let map, worker, candidateMarker, popup, ready = false, mode = "place", requestId = 0, currentNew = [];
 let selectedStation = null, currentReached = [];
+let includeSpecial = true;
 
 function showError(message) {
   $("error").textContent = message;
@@ -56,6 +57,7 @@ function selectLocation(lngLat) {
     type: "scenario",
     id: requestId,
     xy: proj4("EPSG:4326", "EPSG:3310", [lngLat.lng, lngLat.lat]),
+    includeSpecial,
   });
 }
 
@@ -97,7 +99,9 @@ function showPopup(lngLat, title, lines, connector = null) {
 }
 
 async function getJSON(filename) {
-  const response = await fetch(new URL(filename, document.baseURI), { signal: AbortSignal.timeout(60000) });
+  const response = await fetch(new URL(filename, document.baseURI), {
+    cache: "no-cache", signal: AbortSignal.timeout(60000),
+  });
   if (!response.ok) throw new Error(`${filename}: HTTP ${response.status}. Run fire-coverage run and rebuild the site.`);
   return response.json();
 }
@@ -106,16 +110,51 @@ function updateGapHighlight() {
   const highlighted = $("highlight-gaps").checked;
   const added = ["boolean", ["feature-state", "added"], false];
   const reached = ["boolean", ["feature-state", "stationReached"], false];
-  const uncovered = ["==", ["get", "coverage"], "uncovered"];
+  const coverage = ["get", includeSpecial ? "coverage" : "coverage_without_special"];
+  const uncovered = ["==", coverage, "uncovered"];
   map.setPaintProperty("parcel-fill", "fill-color", [
     "case", added, "#a45cff", reached, "#38bdf8",
-    ["match", ["get", "coverage"], "covered", "#438360",
+    ["match", coverage, "covered", "#438360",
       "uncovered", highlighted ? "#c34f43" : "#d58678", "#a4aaa8"],
   ]);
   map.setPaintProperty("parcel-fill", "fill-opacity",
     ["case", ["any", added, reached], .85, highlighted ? ["case", uncovered, .7, .18] : .55]);
   map.setLayoutProperty("gap-outline", "visibility", highlighted ? "visible" : "none");
+  map.setFilter("gap-outline", ["all", ["==", ["get", "focus_status"], "included"],
+    ["!=", ["get", "access"], "inferred_straight_line"], uncovered]);
+  map.setPaintProperty("inferred-outline", "line-color", [
+    "case", added, "#58248f", reached, "#0369a1",
+    ["match", coverage, "uncovered", "#982d27", "#275238"],
+  ]);
+  map.setLayoutProperty("special-impact", "visibility", includeSpecial ? "none" : "visible");
   $("explorer").classList.toggle("gaps-highlighted", highlighted);
+}
+
+function updateBaseline(summary, stations) {
+  const counts = includeSpecial ? summary.focus.counts : summary.without_special.focus_counts;
+  const inferred = includeSpecial ? summary.focus.inferred_counts : summary.without_special.inferred_counts;
+  const stationCount = includeSpecial ? summary.stations : summary.without_special.stations;
+  const impact = summary.focus.counts.covered - summary.without_special.focus_counts.covered;
+  const hasSpecial = summary.stations > summary.without_special.stations;
+  const baselineLabel = hasSpecial ? (includeSpecial ? "including Caspar" : "excluding Caspar") : "no qualifying local additions";
+  $("station-count").textContent = number(stationCount);
+  for (const category of ["covered", "uncovered"]) $(`${category}-count`).textContent = number(counts[category]);
+  $("focus-rule").textContent = `Residential zoning and at least $${number(summary.focus.min_improvement_value)} in county improvement value. Keep mapped road contacts; infer straight-line access only where missing. Baseline stations: ${baselineLabel}.`;
+  $("gap-summary").textContent = `Residential gap parcels: ${number(counts.uncovered)}. Existing stations: ${number(stationCount)} (${baselineLabel}). Inferred-access gaps: ${number(inferred.uncovered)}. Zoning/value uncertain: ${number(summary.focus.uncertain)} (outlines only). Other zoning or below cutoff: ${number(summary.focus.excluded)}.`;
+  $("special-impact-summary").textContent = !hasSpecial
+    ? "No qualifying locally added station is present in this dataset."
+    : includeSpecial
+      ? `Caspar included. ${number(impact)} residential parcels would lose modeled coverage without it.`
+      : `Caspar excluded. ${number(impact)} additional residential coverage gaps. Orange outlines identify these parcels.`;
+  $("special-impact-legend").hidden = includeSpecial;
+  $("explorer").classList.toggle("special-disabled", !includeSpecial);
+  for (const station of stations.features) {
+    map.setFeatureState({ source: "stations", id: station.id }, {
+      disabled: !includeSpecial && station.properties.special_case === true,
+    });
+  }
+  stationTable(stations);
+  updateGapHighlight();
 }
 
 function mapData(parcels, stations, highway) {
@@ -135,6 +174,16 @@ function mapData(parcels, stations, highway) {
     },
   });
   map.addLayer({ id: "parcel-fill", type: "fill", source: "parcels", filter: included });
+  map.addLayer({
+    id: "special-impact", type: "line", source: "parcels",
+    filter: ["all", included, ["==", ["get", "coverage"], "covered"],
+      ["==", ["get", "coverage_without_special"], "uncovered"]],
+    layout: { visibility: "none" },
+    paint: {
+      "line-color": "#e97816",
+      "line-width": ["interpolate", ["linear"], ["zoom"], 9, 3, 15, 6],
+    },
+  });
   map.addLayer({
     id: "parcel-line", type: "line", source: "parcels",
     filter: mapped,
@@ -190,20 +239,25 @@ function mapData(parcels, stations, highway) {
     paint: {
       "circle-radius": ["interpolate", ["linear"], ["zoom"], 8, 4, 14, 8],
       "circle-color": ["case",
+        ["boolean", ["feature-state", "disabled"], false], "#fffdf8",
         ["!=", ["get", "status"], "included"], "#fffdf8",
         ["boolean", ["get", "special_case"], false], "#e97816",
         "#913e2c"],
-      "circle-stroke-color": ["case", ["boolean", ["feature-state", "selected"], false], "#0369a1", "#5d332a"],
+      "circle-stroke-color": ["case", ["boolean", ["feature-state", "selected"], false], "#0369a1",
+        ["boolean", ["feature-state", "disabled"], false], "#e97816", "#5d332a"],
       "circle-stroke-width": ["case", ["boolean", ["feature-state", "selected"], false], 4, 1.5],
     },
   });
 }
 
 function stationTable(stations) {
+  $("station-list").replaceChildren();
   for (const { properties: p } of stations.features) {
     const row = document.createElement("tr");
     row.classList.toggle("special-case-row", p.special_case === true);
-    const selection = p.status === "included" ? "Included (unverified)" : p.status.replaceAll("_", " ");
+    const selection = p.status === "included"
+      ? (!includeSpecial && p.special_case ? "Disabled in this comparison" : "Included (unverified)")
+      : p.status.replaceAll("_", " ");
     const values = [p.name, p.special_case ? `${selection} - special case` : selection,
       p.highway_miles === null ? "No route within limit" : p.highway_miles.toFixed(2),
       p.snap_m === null ? "No connection" : `${p.snap_m.toFixed(0)} m`];
@@ -280,7 +334,8 @@ async function initialize() {
         currentReached = result.reachedIds;
         for (const id of currentReached) map.setFeatureState({ source: "parcels", id }, { stationReached: true });
         $("station-reach-legend").hidden = false;
-        $("status").textContent = `Station evaluated. ${selectedStation.properties.name}: ${number(currentReached.length)} residential parcels within five miles, including any inferred access. The baseline is unchanged.`;
+        const disabled = !includeSpecial && selectedStation.properties.special_case;
+        $("status").textContent = `Station evaluated. ${selectedStation.properties.name}: ${number(currentReached.length)} residential parcels within five miles, including any inferred access. ${disabled ? "This station is disabled in the baseline." : "The baseline is unchanged."}`;
         return;
       }
       currentNew = result.newIds;
@@ -293,6 +348,7 @@ async function initialize() {
     worker.onerror = (event) => {
       console.error(event);
       ready = false;
+      $("include-special").disabled = true;
       reject(new Error("Routing worker failed. Reload the page or rebuild the data."));
       clearSelection();
       $("candidate").setAttribute("aria-busy", "false");
@@ -311,17 +367,27 @@ async function initialize() {
   if (!summary.focus?.inferred_counts || !Number.isFinite(summary.focus.min_improvement_value)) {
     throw new Error("Development and inferred-access data is missing. Rebuild the dataset.");
   }
-  mapData(parcels, stations, highway);
-  $("station-count").textContent = number(summary.stations);
-  for (const category of ["covered", "uncovered"]) {
-    $(`${category}-count`).textContent = number(summary.focus.counts[category]);
+  if (!summary.without_special?.focus_counts || !summary.without_special?.inferred_counts
+    || !Number.isInteger(summary.without_special.stations)
+    || parcels.features.some(({ properties: p }) =>
+      !["covered", "uncovered", "unknown"].includes(p.coverage_without_special)
+      || !(p.baseline_without_special_miles === null || Number.isFinite(p.baseline_without_special_miles)))) {
+    throw new Error("Station comparison data is missing. Rebuild the dataset.");
   }
+  mapData(parcels, stations, highway);
   $("unknown-count").textContent = number(summary.focus.uncertain);
-  $("focus-rule").textContent = `Residential zoning and at least $${number(summary.focus.min_improvement_value)} in county improvement value. Keep mapped road contacts; infer straight-line access only where missing. Baseline stations include the Caspar special case.`;
-  $("gap-summary").textContent = `Residential gap parcels: ${number(summary.focus.counts.uncovered)}. Existing stations: ${number(summary.stations)} (including local additions). Inferred-access gaps: ${number(summary.focus.inferred_counts.uncovered)}. Zoning/value uncertain: ${number(summary.focus.uncertain)} (outlines only). Other zoning or below cutoff: ${number(summary.focus.excluded)}.`;
+  $("include-special").checked = includeSpecial;
+  updateBaseline(summary, stations);
+  $("include-special").onchange = () => {
+    if (!ready) return;
+    includeSpecial = $("include-special").checked;
+    clearSelection();
+    clearError();
+    updateBaseline(summary, stations);
+    $("status").textContent = `${$("special-impact-summary").textContent} Candidate and station selections cleared.`;
+  };
   $("highlight-gaps").onchange = updateGapHighlight;
   $("data-date").textContent = `Analysis built ${new Date(summary.built_at).toLocaleDateString()}. Counts focus on ${number(summary.focus.parcels)} developed residential parcels; ${number(summary.focus.inferred_counts.covered + summary.focus.inferred_counts.uncovered)} use inferred access. The download retains all ${number(summary.parcels)} parcel identifiers. Source dates may be older; inspect provenance and station records.`;
-  stationTable(stations);
   const fit = () => map.fitBounds([[summary.extent[0], summary.extent[1]], [summary.extent[2], summary.extent[3]]], { padding: 35, duration: 0 });
   fit();
   $("fit").onclick = fit;
@@ -365,14 +431,19 @@ async function initialize() {
     const hit = hits[0];
     if (!hit) return;
     const p = hit.properties;
+    const coverage = includeSpecial ? p.coverage : p.coverage_without_special;
+    const miles = includeSpecial ? p.baseline_miles : p.baseline_without_special_miles;
+    const baselineLabel = summary.stations === summary.without_special.stations
+      ? "qualifying existing stations" : `${includeSpecial ? "including" : "excluding"} Caspar`;
     showPopup(event.lngLat, `Parcel ${p.apn}`, [
       `County zoning: ${p.base_zones}.`,
       `County improvement value: ${p.improvement_value == null ? "Unknown" : `$${number(p.improvement_value)}`}.`,
       p.focus_status === "included" ? "Included in the developed-residential focus." : "Zoning or improvement value is uncertain; excluded from map coverage counts.",
-      `Baseline (all existing stations): ${p.coverage === "uncovered" ? "No modeled route within five miles" : p.coverage}.`,
+      `Baseline (${baselineLabel}): ${coverage === "uncovered" ? "No modeled route within five miles" : coverage}.`,
+      ...(!includeSpecial && p.coverage === "covered" && coverage === "uncovered" ? ["This parcel loses modeled coverage when Caspar is excluded."] : []),
       currentNew.includes(hit.id) ? "Newly covered by the hypothetical station." : "Not an addition from the current candidate.",
       ...(currentReached.includes(hit.id) ? ["Within five miles of the selected station, including any inferred access."] : []),
-      `Access: ${p.access.replaceAll("_", " ")}. ${p.baseline_miles == null ? "" : `Baseline route + access: ${p.baseline_miles} mi.`}`,
+      `Access: ${p.access.replaceAll("_", " ")}. ${miles == null ? "" : `Baseline route + access: ${miles} mi.`}`,
       p.access === "inferred_straight_line"
         ? `Inferred access: ${number(p.access_gap_m)} m straight-line from parcel boundary to nearest connected road, counted in the total. The dashed line is an estimate, not a verified driveway; actual access may be longer or blocked.`
         : "Parcel boundary access is estimated, not verified.",
@@ -380,6 +451,7 @@ async function initialize() {
   });
   ready = true;
   for (const id of ["highlight-gaps", "place-mode", "inspect-mode", "use-center", "use-coordinates", "fit"]) $(id).disabled = false;
+  $("include-special").disabled = summary.stations === summary.without_special.stations;
   map.getCanvas().style.cursor = "crosshair";
   $("status").textContent = "Ready. Red parcels highlight developed-residential coverage gaps. Dashed outlines indicate inferred access. Click near a road to place a hypothetical station.";
 }

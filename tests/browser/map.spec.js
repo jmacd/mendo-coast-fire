@@ -15,18 +15,19 @@ async function fixture(page, missing = false, special = false) {
     [longitude, 39.299], [longitude + .002, 39.299], [longitude + .002, 39.301],
     [longitude, 39.301], [longitude, 39.299],
   ]], {
-    apn: `TEST-${id}`, coverage, focus_status: focus, base_zones: zone,
+    apn: `TEST-${id}`, coverage, coverage_without_special: coverage, focus_status: focus, base_zones: zone,
     improvement_value: coverage === "unknown" ? null : 100000,
     access: coverage === "unknown" ? "no_mapped_road" : "estimated",
     baseline_miles: coverage === "covered" ? 1 : null,
+    baseline_without_special_miles: coverage === "covered" ? 1 : null,
   }, id);
   const data = {
     "graph.json": {
-      schema: 3, crs: "EPSG:3310", nodes, edges: [[0, 1, 2000, 3]], highway_edges: [0],
+      schema: 4, crs: "EPSG:3310", nodes, edges: [[0, 1, 2000, 3]], highway_edges: [0],
       to_highway: [0, 0], limit_m: 8046.72, candidate_snap_m: 100, station_snap_m: 150,
       parcels: [
-        { id: 0, access: [[0, .2, .4]], baseline: "covered" },
-        { id: 1, access: [[0, .6, .8]], baseline: "uncovered" },
+        { id: 0, access: [[0, .2, .4]], baseline: "covered", baseline_without_special: "covered" },
+        { id: 1, access: [[0, .6, .8]], baseline: "uncovered", baseline_without_special: "uncovered" },
       ],
     },
     "summary.json": {
@@ -34,6 +35,10 @@ async function fixture(page, missing = false, special = false) {
       focus: {
         parcels: 2, counts: { covered: 1, uncovered: 1 }, uncertain: 2, excluded: 1,
         min_improvement_value: 10000, inferred_counts: { covered: 0, uncovered: 0 },
+      },
+      without_special: {
+        stations: 1, focus_counts: { covered: 1, uncovered: 1 },
+        inferred_counts: { covered: 0, uncovered: 0 },
       },
       built_at: "2026-01-01T00:00:00Z", extent: [-123.77, 39.29, -123.73, 39.31],
     },
@@ -92,13 +97,14 @@ async function mapColors(page) {
     context.drawImage(bitmap, 0, 0);
     const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
     bitmap.close();
-    const counts = { red: 0, purple: 0, yellow: 0, blue: 0 };
+    const counts = { red: 0, purple: 0, yellow: 0, blue: 0, orange: 0 };
     for (let i = 0; i < data.length; i += 4) {
       const [r, g, b] = data.subarray(i, i + 3);
       if (r > 170 && g < 160 && b < 160) counts.red++;
       if (r > 120 && r < 210 && g < 160 && b > 210) counts.purple++;
       if (r > 225 && g > 225 && b < 60) counts.yellow++;
       if (r < 120 && g > 140 && g < 220 && b > 210) counts.blue++;
+      if (r > 210 && g > 80 && g < 180 && b < 60) counts.orange++;
     }
     return counts;
   }, image.toString("base64"));
@@ -135,6 +141,99 @@ test("failed data loads are visible, with no misleading zero counts", async ({ p
   await expect(page.locator("#covered-count")).toHaveText("--");
   await expect(page.locator("#use-center")).toBeDisabled();
 });
+
+test("missing station comparison data is an explicit error", async ({ page }) => {
+  const data = await fixture(page, false, true);
+  delete data["summary.json"].without_special;
+  await page.goto("/");
+  await expect(page.locator("#error")).toContainText("Station comparison data is missing");
+  await expect(page.locator("#covered-count")).toHaveText("--");
+  await expect(page.getByRole("switch", { name: "Include Caspar station" })).toBeDisabled();
+});
+
+for (const width of [1280, 390]) {
+  test(`Caspar switch updates gaps, impact outlines, inspection and candidate comparisons at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    const data = await fixture(page, false, true);
+    const affected = data["parcels.geojson"].features[0];
+    Object.assign(affected.properties, {
+      coverage_without_special: "uncovered", baseline_without_special_miles: 6.25,
+      access: "inferred_straight_line", access_gap_m: 200,
+    });
+    data["graph.json"].parcels[0].baseline_without_special = "uncovered";
+    data["graph.json"].parcels[0].access = [[0, .3, .3, 200]];
+    const shared = structuredClone(affected);
+    shared.id = 5;
+    shared.properties = { ...affected.properties, apn: "SHARED", access: "estimated",
+      coverage_without_special: "covered", baseline_without_special_miles: 2 };
+    shared.geometry.coordinates[0] = shared.geometry.coordinates[0].map(([lng, lat]) => [lng + .003, lat]);
+    data["parcels.geojson"].features.push(shared);
+    data["graph.json"].parcels.push({ id: 5, access: [[0, .4, .5]], baseline: "covered", baseline_without_special: "covered" });
+    Object.assign(data["summary.json"].focus, {
+      parcels: 3, counts: { covered: 2, uncovered: 1 }, inferred_counts: { covered: 1, uncovered: 0 },
+    });
+    data["summary.json"].without_special = {
+      stations: 1, focus_counts: { covered: 1, uncovered: 2 }, inferred_counts: { covered: 0, uncovered: 1 },
+    };
+    await page.goto("/");
+    await expect(page.locator("#status")).toContainText("Ready.");
+    const toggle = page.getByRole("switch", { name: "Include Caspar station" });
+    await expect(toggle).toBeChecked();
+    await expect(page.locator("#special-impact-summary")).toContainText("1 residential parcels would lose modeled coverage");
+    const originalColors = await mapColors(page);
+    await page.getByRole("button", { name: "Use map center" }).click();
+    await expect(page.locator("#new-count")).toHaveText("1");
+    await toggle.uncheck();
+    await expect(page.locator("#new-count")).toHaveText("--");
+    await expect(page.locator("#station-count")).toHaveText("1");
+    await expect(page.locator("#covered-count")).toHaveText("1");
+    await expect(page.locator("#uncovered-count")).toHaveText("2");
+    await expect(page.locator("#gap-summary")).toContainText("Inferred-access gaps: 1");
+    await expect(page.locator("#special-impact-legend")).toBeVisible();
+    await expect.poll(async () => (await mapColors(page)).orange).toBeGreaterThan(originalColors.orange + 60);
+    await expect.poll(async () => (await mapColors(page)).red).toBeGreaterThan(originalColors.red + 100);
+    const offColors = await mapColors(page);
+    await page.getByRole("checkbox", { name: "Highlight coverage gaps" }).uncheck();
+    await expect.poll(async () => (await mapColors(page)).orange).toBeGreaterThan(originalColors.orange + 60);
+    await page.getByRole("button", { name: "Use map center" }).click();
+    await expect(page.locator("#new-count")).toHaveText("2");
+    await expect(page.locator("#covered-count")).toHaveText("1");
+    await page.getByText("Review the station inventory", { exact: true }).click();
+    await expect(page.locator("#station-list tr").filter({ hasText: "Local special-case station" })).toContainText("Disabled in this comparison");
+    await page.getByText("Enter a precise location", { exact: true }).click();
+    await page.getByLabel("Latitude", { exact: true }).fill("39.3");
+    await page.getByLabel("Longitude", { exact: true }).fill("-123.757");
+    await page.getByRole("button", { name: "Evaluate location" }).click();
+    await expect(page.locator("#candidate")).toHaveAttribute("aria-busy", "false");
+    await page.getByRole("button", { name: "Clear candidate", exact: true }).click();
+    await page.getByRole("button", { name: "Inspect parcels" }).click();
+    const canvas = page.locator(".maplibregl-canvas");
+    const bounds = await canvas.boundingBox();
+    await canvas.click({ position: { x: bounds.width / 2, y: bounds.height / 2 } });
+    await expect(page.locator(".maplibregl-popup-content")).toContainText("Baseline (excluding Caspar): No modeled route within five miles");
+    await expect(page.locator(".maplibregl-popup-content")).toContainText("Baseline route + access: 6.25 mi");
+    await expect(page.locator(".maplibregl-popup-content")).toContainText("loses modeled coverage");
+    await toggle.focus();
+    await page.keyboard.press("Space");
+    await expect(toggle).toBeChecked();
+    await expect(page.locator(".maplibregl-popup")).toHaveCount(0);
+    await expect(page.locator("#station-count")).toHaveText("2");
+    await expect(page.locator("#covered-count")).toHaveText("2");
+    await expect(page.locator("#uncovered-count")).toHaveText("1");
+    await expect(page.locator("#special-impact-legend")).toBeHidden();
+    await expect(page.locator("#station-list tr").filter({ hasText: "Local special-case station" })).toContainText("Included (unverified)");
+    await page.getByRole("checkbox", { name: "Highlight coverage gaps" }).check();
+    await page.getByRole("button", { name: "Show study area" }).click();
+    await expect.poll(async () => (await mapColors(page)).orange).toBeLessThan(offColors.orange - 60);
+    await page.getByRole("button", { name: "Use map center" }).click();
+    await expect(page.locator("#new-count")).toHaveText("1");
+    await expect(page.locator("#map-warning")).toBeHidden();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    expect(errors).toEqual([]);
+  });
+}
 
 test("basemap failure is visible without blocking local coverage calculations", async ({ page }) => {
   await fixture(page);

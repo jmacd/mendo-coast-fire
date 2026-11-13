@@ -27,7 +27,7 @@
       </div>
     </section>
     <section class="metrics" aria-label="Baseline study totals">
-      <div><strong id="station-count">--</strong><span>qualifying station locations</span></div>
+      <div><strong id="station-count">--</strong><span>station locations in selected baseline</span></div>
       <div><strong id="covered-count">--</strong><span>developed residential parcels with estimated coverage</span></div>
       <div><strong id="uncovered-count">--</strong><span>developed residential parcels beyond 5 miles, including access</span></div>
       <div><strong id="unknown-count">--</strong><span>parcels needing zoning/value review</span></div>
@@ -38,6 +38,12 @@
         <h2>What could one new station change?</h2>
         <p class="muted">Click near a road to place a candidate. Purple parcels are newly covered; green parcels were already covered. Bright yellow roads show the candidate's reach.</p>
         <p class="muted">Click an existing station in either mode to show its own five-mile reach.</p>
+        <div class="station-controls">
+          <label class="station-toggle"><input id="include-special" type="checkbox" role="switch" aria-describedby="special-address special-impact-summary" checked disabled><span class="switch-track" aria-hidden="true"></span> Include Caspar station</label>
+          <p id="special-address">Locally added: 42800 Caspar Little Lake Rd.</p>
+          <p id="special-impact-summary" aria-live="polite">Loading the station's coverage contribution...</p>
+          <p class="fine">Changing this switch clears the current selection, not the source inventory.</p>
+        </div>
         <div class="gap-controls">
           <label><input id="highlight-gaps" type="checkbox" checked disabled> Highlight coverage gaps</label>
           <p id="focus-rule">Loading development and access screening rules...</p>
@@ -75,6 +81,7 @@
           <p><i class="swatch candidate-route"></i><span id="road-reach-label">Candidate's five-mile road reach</span></p>
           <p id="station-reach-legend" hidden><i class="swatch station-reach"></i>Reached by the selected existing station</p>
           <p><i class="swatch uncovered"></i>Existing five-mile coverage gap</p>
+          <p id="special-impact-legend" hidden><i class="swatch special-impact"></i>Coverage lost without Caspar</p>
           <p><i class="swatch inferred"></i>Dashed outline: inferred straight-line access</p>
           <p><i class="swatch unknown"></i>Zoning/value uncertain: outlines only</p>
           <p><i class="swatch station"></i>Qualifying station (unverified)</p>
@@ -105,7 +112,7 @@
         <p>Missing access for qualifying developed residential parcels is estimated with an uncapped straight-line connector, not a mapped driveway. Its length is included in baseline, candidate and selected-station distances. It can cross barriers and underestimate the actual trip to a home. County improvement value is a screening proxy, not market value or proof of a dwelling; low or missing assessments can omit homes.</p>
         <p>The map focuses on dedicated residential zones, not a verified inventory of homes. Agricultural, timber and mixed-use zones can contain residences but are outside this focus. Missing or conflicting zoning is kept uncertain. The county zoning map does not cover incorporated-city zoning, including Fort Bragg and Point Arena. Where city zoning is missing, parcels remain faint outlines rather than being classified as non-residential.</p>
         <p>Station records can be outdated, missing or duplicated. Staffing, equipment, seasonal operations, mutual aid and response times are not evaluated. Treat apparent gaps as questions to investigate with local departments, not as findings that a property lacks fire protection.</p>
-        <p>Orange stations are locally added special cases included in estimated coverage. A station's absence from these public inventories does not establish whether insurers recognize it or how it affects homeowners' premiums.</p>
+        <p>Orange stations are locally added special cases included by default. Switch off Caspar to compare coverage without it: orange parcel outlines identify additional gaps, while parcels reached by other included stations remain covered. This comparison does not establish whether insurers recognize a station or how it affects homeowners' premiums.</p>
       </div>
     </section>
     <section id="data" class="section data-section">

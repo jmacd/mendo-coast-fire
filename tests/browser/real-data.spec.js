@@ -71,6 +71,34 @@ test("generated coastal dataset supports a real new-coverage scenario", async ({
   await expect(page.locator("#new-count")).toHaveText("--");
   await expect(page.locator("#error")).toBeHidden();
   await expect(page.locator("#map-warning")).toBeHidden();
-  expect(errors).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath("coverage.png"), fullPage: true });
+
+  const impacted = included.filter((p) => p.properties.coverage === "covered"
+    && p.properties.coverage_without_special === "uncovered");
+  expect(impacted.length).toBe(summary.focus.counts.covered - summary.without_special.focus_counts.covered);
+  expect(impacted.length).toBeGreaterThan(0);
+  const caspar = stations.find((s) => s.properties.special_case && s.properties.status === "included");
+  const [casparLng, casparLat] = caspar.geometry.coordinates;
+  const withoutCaspar = network.scenario(proj4("EPSG:4326", "EPSG:3310", [casparLng, casparLat]), { includeSpecial: false });
+  expect(new Set(withoutCaspar.newIds)).toEqual(new Set(impacted.map((p) => p.id)));
+  const toggle = page.getByRole("switch", { name: "Include Caspar station" });
+  await toggle.uncheck();
+  await expect(page.locator("#covered-count")).toHaveText(summary.without_special.focus_counts.covered.toLocaleString());
+  await expect(page.locator("#uncovered-count")).toHaveText(summary.without_special.focus_counts.uncovered.toLocaleString());
+  await expect(page.locator("#station-count")).toHaveText(String(summary.without_special.stations));
+  await expect(page.locator("#special-impact-summary")).toContainText(`${impacted.length.toLocaleString()} additional residential coverage gaps`);
+  await page.getByLabel("Latitude", { exact: true }).fill(String(casparLat));
+  await page.getByLabel("Longitude", { exact: true }).fill(String(casparLng));
+  await page.getByRole("button", { name: "Evaluate location" }).click();
+  await expect(page.locator("#new-count")).toHaveText(impacted.length.toLocaleString());
+  await page.getByRole("button", { name: "Clear candidate", exact: true }).click();
+  await page.screenshot({ path: testInfo.outputPath("caspar-excluded.png"), fullPage: true });
+  await toggle.check();
+  await expect(page.locator("#covered-count")).toHaveText(summary.focus.counts.covered.toLocaleString());
+  await expect(page.locator("#uncovered-count")).toHaveText(summary.focus.counts.uncovered.toLocaleString());
+  await page.getByRole("button", { name: "Evaluate location" }).click();
+  await expect(page.locator("#new-count")).toHaveText("0");
+  await expect(page.locator("#error")).toBeHidden();
+  await expect(page.locator("#map-warning")).toBeHidden();
+  expect(errors).toEqual([]);
 });

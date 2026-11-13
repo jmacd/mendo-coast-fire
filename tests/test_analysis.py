@@ -27,9 +27,8 @@ def test_zoning_requires_confirmed_residential_codes_on_every_part(zones, expect
     assert zoning_status(zones, ["RR", "R1"]) == expected
 
 
-def test_analysis_scopes_counts_and_candidate_access_without_discarding_other_parcels(
-    monkeypatch, tmp_path
-):
+@pytest.fixture
+def analysis_inputs(monkeypatch):
     config = tomllib.loads(Path("config/mendocino.toml").read_text())
     config["additional_stations"] = []
     parcels = [
@@ -71,6 +70,13 @@ def test_analysis_scopes_counts_and_candidate_access_without_discarding_other_pa
         },
     }
     monkeypatch.setattr("coast_fire.analysis.load_sources", lambda *_: (sources, {}))
+    return config, sources
+
+
+def test_analysis_scopes_counts_and_candidate_access_without_discarding_other_parcels(
+    analysis_inputs, tmp_path
+):
+    config, _ = analysis_inputs
     summary = analyze(config, tmp_path, tmp_path)
     graph = json.loads((tmp_path / "graph.json").read_text())
     results = json.loads((tmp_path / "parcels.geojson").read_text())["features"]
@@ -115,6 +121,52 @@ def test_analysis_scopes_counts_and_candidate_access_without_discarding_other_pa
         assert len(p["access_connector"]) == 2
         assert p["baseline_miles"] == round((low * graph["edges"][edge][2] + gap) / MILE, 3)
     assert results[7]["properties"]["baseline_miles"] > 5
+    assert summary["without_special"]["focus_counts"] == summary["focus"]["counts"]
+    for parcel in results:
+        p = parcel["properties"]
+        assert p["coverage_without_special"] == p["coverage"]
+        assert p["baseline_without_special_miles"] == p["baseline_miles"]
+
+
+@pytest.mark.parametrize("with_regular_station", [True, False])
+def test_without_local_station_preserves_overlap_and_inferred_access(
+    analysis_inputs, tmp_path, with_regular_station
+):
+    config, sources = analysis_inputs
+    local = tomllib.loads(Path("config/mendocino.toml").read_text())["additional_stations"][0]
+    config["additional_stations"] = [{**local, "coordinates": [-123.7, 39.3]}]
+    if not with_regular_station:
+        sources["osm_stations"]["elements"] = []
+    summary = analyze(config, tmp_path, tmp_path)
+    graph = json.loads((tmp_path / "graph.json").read_text())
+    parcels = json.loads((tmp_path / "parcels.geojson").read_text())["features"]
+    assert summary["focus"]["counts"] == {"covered": 5, "uncovered": 0}
+    assert summary["stations"] == (2 if with_regular_station else 1)
+    alternative = summary["without_special"]
+    assert alternative["stations"] == (1 if with_regular_station else 0)
+    assert alternative["focus_counts"] == (
+        {"covered": 3, "uncovered": 2} if with_regular_station else {"covered": 0, "uncovered": 5}
+    )
+    assert alternative["inferred_counts"] == (
+        {"covered": 2, "uncovered": 1} if with_regular_station else {"covered": 0, "uncovered": 3}
+    )
+    for record in graph["parcels"]:
+        p = parcels[record["id"]]["properties"]
+        assert record["baseline_without_special"] == p["coverage_without_special"]
+        if not with_regular_station:
+            assert p["baseline_without_special_miles"] is None
+    if with_regular_station:
+        assert parcels[0]["properties"]["coverage_without_special"] == "covered"
+        for index in [1, 7]:
+            p = parcels[index]["properties"]
+            assert p["coverage"] == "covered"
+            assert p["coverage_without_special"] == "uncovered"
+            assert p["baseline_without_special_miles"] > 5 > p["baseline_miles"]
+        inferred = graph["parcels"][-1]
+        edge, low, _, gap = inferred["access"][0]
+        assert parcels[7]["properties"]["baseline_without_special_miles"] == round(
+            (low * graph["edges"][edge][2] + gap) / MILE, 3
+        )
 
 
 @pytest.mark.parametrize("value", [-1, float("nan"), "10000"])

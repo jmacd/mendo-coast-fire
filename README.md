@@ -31,6 +31,16 @@ including the connector in the five-mile distance. Excluded inventory stations
 can also be inspected without adding them to the baseline; missing road
 connections produce an explicit error rather than an invented coverage area.
 
+**Include Caspar station** is on by default. Switch it off to compare the
+baseline without the locally added station at 42800 Caspar Little Lake Rd.
+Parcels covered only with Caspar become gaps with **orange outlines**; parcels
+also reached by another included station remain covered. Totals, inferred-access
+gap counts, parcel inspection distances and candidate additions use the selected
+baseline. The disabled station has a hollow orange marker and remains available
+for reach inspection without adding it back into baseline coverage.
+Changing the switch clears candidate/selected-station overlays and parcel popups,
+keeps the map position, and does not change the source inventory or saved data.
+
 This is **not** an emergency dispatch tool, an ISO/PPC or insurance
 determination, proof of legal access, or a response-time model.
 
@@ -179,18 +189,24 @@ reports the shortest modeled total, including the connector, even beyond five
 miles when a route exists. `summary.json` retains overall
 `counts`; `focus` contains the displayed covered/uncovered counts and
 excluded/uncertain totals, the cutoff, and `inferred_counts`.
-The **schema 3** routing graph contains only qualifying developed residential
+The **schema 4** routing graph contains only qualifying developed residential
 parcels. Access records are `[edge, low, high]` for mapped frontage or
 `[edge, fraction, fraction, connector_m]` for inferred access. Both Python
 baseline routing and browser candidate/station routing add the connector cost.
-Old schema 1/2 graphs must be rebuilt.
+Each graph parcel also includes `baseline_without_special`, calculated without
+the included locally added station locations. Parcel GeoJSON retains the default
+`coverage` and `baseline_miles` alongside `coverage_without_special` and
+`baseline_without_special_miles`; summary `without_special` contains alternative
+station, overall, focused and inferred-access counts. Both baselines use the same
+directed roads, source snap costs and parcel access estimates. Removing a station
+does not remove roads or discard parcels. Old schema 1/2/3 graphs must be rebuilt.
 
 ### Caspar special case
 
 `additional_stations` in `config/mendocino.toml` permanently adds the locally
 reported fire station at **42800 Caspar Little Lake Rd**. Its orange marker,
 popup, inventory entry and downloadable records identify it as a special case.
-It participates in the same station-selection and baseline coverage rules;
+By default, it participates in the same station-selection and baseline coverage rules;
 it is not a hypothetical station. Nearby future source records are consolidated
 without losing the local addition or its special-case label.
 
